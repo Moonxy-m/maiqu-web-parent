@@ -21,17 +21,18 @@
 			</el-table-column>
 			<el-table-column type="index" width="60">
 			</el-table-column>
-			<el-table-column prop="name" label="品牌名称" width="100" sortable>
+			<el-table-column prop="name" label="品牌名称" width="120" sortable>
 			</el-table-column>
-			<el-table-column prop="englishName" label="英文名称" width="110" sortable>
+			<el-table-column prop="englishName" label="英文名称" width="150" sortable>
 			</el-table-column>
-			<el-table-column prop="logo" label="logo" width="130" sortable>
+			<el-table-column prop="logo" label="logo" width="150" sortable>
+				<template scope="scope">
+					<img :src="'http://172.16.4.150/'+scope.row.logo" height="50"/>
+				</template>
 			</el-table-column>
-			<el-table-column prop="description" label="描述" min-width="110" sortable>
+			<el-table-column prop="productType.name" label="类型" width="150" sortable>
 			</el-table-column>
-			<el-table-column prop="productType.name" label="类型" width="145" sortable>
-			</el-table-column>
-			<el-table-column prop="productType.description" label="类型描述" width="145" sortable>
+			<el-table-column prop="description" label="描述" min-width="180" sortable>
 			</el-table-column>
 			<el-table-column label="操作" width="150">
 				<!--自定义列显示的模板-->
@@ -96,7 +97,31 @@
 					<el-input v-model="addForm.englishName" auto-complete="off"></el-input>
 				</el-form-item>
 				<el-form-item label="类型" prop="productTypeId">
-					<el-input v-model="addForm.productTypeId" auto-complete="off"></el-input>
+					<!--<el-input v-model="addForm.productTypeId" auto-complete="off"></el-input>-->
+					<el-cascader
+							:options="productTypes"
+							:props="props"
+							v-model="addForm.productTypeId">
+					</el-cascader>
+				</el-form-item>
+				<el-form-item label="logo">
+					<!--
+                    action 必选参数, 上传的地址
+                    on-remove : 删除的回调
+                    file-list : 上传的文件列表
+                    -->
+					<el-upload
+							class="upload-demo"
+							action="http://localhost:1299/services/common/fastdfs"
+							:on-remove="handleRemoveLogo"
+							:file-list="logoList"
+							:on-success="handleSuccess"
+							:multiple="false"
+							:before-upload="handleBeforeUpload"
+							list-type="picture">
+						<el-button size="small" type="primary">点击上传</el-button>
+						<div slot="tip" class="el-upload__tip">只能上传jpg/png文件，且不超过500kb</div>
+					</el-upload>
 				</el-form-item>
 				<el-form-item label="描述">
 					<el-input type="textarea" v-model="addForm.description"></el-input>
@@ -111,212 +136,126 @@
 </template>
 
 <script>
-	import util from '../../common/js/util'
-	//import NProgress from 'nprogress'
-	import { getUserListPage, removeUser, batchRemoveUser, editUser, addUser } from '../../api/api';
+    import util from '../../common/js/util'
+    //import NProgress from 'nprogress'
+    import { getUserListPage, removeUser, batchRemoveUser, editUser, addUser } from '../../api/api';
 
-	export default {
-		data() {
-			return {
-				filters: {
-					keyword: ''
-				},
-				pageSize:10,
-				brands: [],
-				total: 0,
-				page: 1,
-				listLoading: false,
-				sels: [],//列表选中列
+    export default {
+        data() {
+            return {
+                logoList:[],
+                productTypes:[],
+                props:{
+                    label:"name",
+                    value:"id"
+                },
+                filters: {
+                    keyword: ''
+                },
+                pageSize:10,
+                brands: [],
+                total: 0,
+                page: 1,
+                listLoading: false,
+                sels: [],//列表选中列
 
-				editFormVisible: false,//编辑界面是否显示
-				editLoading: false,
-				editFormRules: {
-					name: [
-						{ required: true, message: '请输入姓名', trigger: 'blur' }
-					]
-				},
-				//编辑界面数据
-				editForm: {
-					id: 0,
-					name: '',
-					sex: -1,
-					age: 0,
-					birth: '',
-					addr: ''
-				},
+                editFormVisible: false,//编辑界面是否显示
+                editLoading: false,
+                editFormRules: {
+                    name: [
+                        { required: true, message: '请输入姓名', trigger: 'blur' }
+                    ]
+                },
+                //编辑界面数据
+                editForm: {
+                    id: 0,
+                    name: '',
+                    sex: -1,
+                    age: 0,
+                    birth: '',
+                    addr: ''
+                },
 
-				addFormVisible: false,//新增界面是否显示
-				addLoading: false,
-				addFormRules: {
-					name: [
-						{ required: true, message: '请输入姓名', trigger: 'blur' }
-					]
-				},
-				//新增界面数据
-				addForm: {
-					name: '',
-					englishName:'',
-					productTypeId:null,
-                    description:''
-				}
+                addFormVisible: false,//新增界面是否显示
+                addLoading: false,
+                addFormRules: {
+                    name: [
+                        { required: true, message: '请输入姓名', trigger: 'blur' }
+                    ]
+                },
+                //新增界面数据
+                addForm: {
+                    name: '',
+                    englishName:'',
+                    productTypeId:null,
+                    description:'',
+                    logo:''
+                }
 
-			}
-		},
-		methods: {
-			//性别显示转换
-			formatSex: function (row, column) {
-				return row.sex == 1 ? '男' : row.sex == 0 ? '女' : '未知';
-			},
-			handleCurrentChange(val) {
-				this.page = val;
-				this.getBrands();
-			},
-			//获取品牌列表
-			getBrands() {
-				this.listLoading = true;
-				//NProgress.start();
-				this.$http.post("/product/brand/json",{
-                    size:this.page,
-					num:this.pageSize,
-					keyword:this.filters.keyword
-				}).then(res=>{
+            }
+        },
+        methods: {
+            //上传之前
+            handleBeforeUpload(){
+                console.debug(this.logoList.length)
+                if(this.logoList.length>0){
+                    this.$message({
+                        message: '只能上传一个文件',
+                        type: 'error'
+                    });
+                    return false;
+                }
+            },
+            //logo上传成功的钩子函数
+            handleSuccess(response, file, fileList){
+                this.addForm.logo = response.restObj;
+                this.logoList = fileList;
+            },
+            //删除图片
+            handleRemoveLogo(file, fileList){
+                console.debug("file",file)
+                console.debug("fileList",fileList)
+                this.logoList = fileList;
+            },
+            //加载类型数据
+            loadProductTypes(){
+                this.$http.get("/product/productType/list")
+                    .then(res=>{
+                        this.productTypes = res.data;
+                    })
+            },
+            //性别显示转换
+            formatSex: function (row, column) {
+                return row.sex == 1 ? '男' : row.sex == 0 ? '女' : '未知';
+            },
+            handleCurrentChange(val) {
+                this.page = val;
+                this.getBrands();
+            },
+            //获取品牌列表
+            getBrands() {
+                this.listLoading = true;
+                //NProgress.start();
+                this.$http.post("/product/brand/json",{
+                    pageNum:this.page,
+                    pageSize:this.pageSize,
+                    keyword:this.filters.keyword
+                }).then(res=>{
                     this.listLoading = false;
                     let pageList = res.data;
                     this.brands = pageList.rows;
                     this.total = pageList.total;
-				})
-			},
-			//删除
-			handleDel: function (index, row) {
-				this.$confirm('确认删除该记录吗?', '提示', {
-					type: 'warning'
-				}).then(() => {
-				    //确定删除
-					this.listLoading = true;
-					//NProgress.start();
-					this.$http.delete("/product/brand/delete/"+row.id)
-						.then((res)=>{
-                            this.listLoading = false;
-                            if(res.data.success){
-                                this.$message({
-                                    message: '删除成功',
-                                    type: 'success'
-                                });
-                                this.getBrands();
-							}else{
-                                //失败的提示
-                                this.$message({
-                                    message: res.data.message,
-                                    type: 'error'
-                                });
-							}
-						})
-
-
-					/*removeUser(para).then((res) => {
-						this.listLoading = false;
-						//NProgress.done();
-						this.$message({
-							message: '删除成功',
-							type: 'success'
-						});
-						this.getBrands();
-					});*/
-
-				})
-			},
-			//显示编辑界面
-			handleEdit: function (index, row) {
-				this.editFormVisible = true;
-				this.editForm = Object.assign({}, row);
-			},
-			//显示新增界面
-			handleAdd: function () {
-				this.addFormVisible = true;
-				this.addForm = {
-                    name: '',
-                    englishName:'',
-                    productTypeId:null,
-                    description:''
-				};
-			},
-			//编辑
-			editSubmit: function () {
-				this.$refs.editForm.validate((valid) => {
-					if (valid) {
-						this.$confirm('确认提交吗？', '提示', {}).then(() => {
-							this.editLoading = true;
-							//NProgress.start();
-							let para = Object.assign({}, this.editForm);
-							para.birth = (!para.birth || para.birth == '') ? '' : util.formatDate.format(new Date(para.birth), 'yyyy-MM-dd');
-							editUser(para).then((res) => {
-								this.editLoading = false;
-								//NProgress.done();
-								this.$message({
-									message: '提交成功',
-									type: 'success'
-								});
-								this.$refs['editForm'].resetFields();
-								this.editFormVisible = false;
-								this.getBrands();
-							});
-						});
-					}
-				});
-			},
-			//新增
-			addSubmit: function () {
-				this.$refs.addForm.validate((valid) => {
-					if (valid) {
-						this.$confirm('确认提交吗？', '提示', {}).then(() => {
-							this.addLoading = true;
-							//NProgress.start();
-							let para = Object.assign({}, this.addForm);//对象的复制
-							this.$http.post("/product/brand/save",para)
-								.then(res=>{
-                                    this.addLoading = false;
-								    let data = res.data;
-								    if(data.success){
-                                        this.$message({
-                                            message: '提交成功',
-                                            type: 'success'
-                                        });
-                                        this.$refs['addForm'].resetFields();//清空表单
-                                        this.addFormVisible = false;//关闭模态框
-                                        this.getBrands();//重新加载表格数据
-									}else{
-                                        this.$message({
-                                            message: data.message,
-                                            type: 'error'
-                                        });
-									}
-								})
-
-							/*addUser(para).then((res) => {
-								this.addLoading = false;
-								//NProgress.done();
-								this.$message({
-									message: '提交成功',
-									type: 'success'
-								});
-								this.$refs['addForm'].resetFields();
-								this.addFormVisible = false;
-								this.getBrands();
-							});*/
-						});
-					}
-				});
-			},
-			selsChange: function (sels) {
-				this.sels = sels;
-			},
-			//批量删除
-			batchRemove: function () {
-				var ids = this.sels.map(item => item.id).toString();
-                this.$confirm('确认删除选中记录吗？', '提示', {
+                })
+            },
+            //删除
+            handleDel: function (index, row) {
+                this.$confirm('确认删除该记录吗?', '提示', {
                     type: 'warning'
                 }).then(() => {
-                    this.$http.delete("/product/brand/deleteSome/"+ids)
+                    //确定删除
+                    this.listLoading = true;
+                    //NProgress.start();
+                    this.$http.delete("/product/brand/delete/"+row.id)
                         .then((res)=>{
                             this.listLoading = false;
                             if(res.data.success){
@@ -333,14 +272,127 @@
                                 });
                             }
                         })
+
+
+                    /*removeUser(para).then((res) => {
+                        this.listLoading = false;
+                        //NProgress.done();
+                        this.$message({
+                            message: '删除成功',
+                            type: 'success'
+                        });
+                        this.getBrands();
+                    });*/
+
                 })
-			}
-		},
-		//相当于jquery的$(function(){})
-		mounted() {
-			this.getBrands();
-		}
-	}
+            },
+            //显示编辑界面
+            handleEdit: function (index, row) {
+                this.editFormVisible = true;
+                this.editForm = Object.assign({}, row);
+            },
+            //显示新增界面
+            handleAdd: function () {
+                this.addFormVisible = true;
+                this.logoList = [];
+                this.addForm = {
+                    name: '',
+                    englishName:'',
+                    productTypeId:null,
+                    description:'',
+                    logo:''
+                };
+            },
+            //编辑
+            editSubmit: function () {
+                this.$refs.editForm.validate((valid) => {
+                    if (valid) {
+                        this.$confirm('确认提交吗？', '提示', {}).then(() => {
+                            this.editLoading = true;
+                            //NProgress.start();
+                            let para = Object.assign({}, this.editForm);
+                            para.birth = (!para.birth || para.birth == '') ? '' : util.formatDate.format(new Date(para.birth), 'yyyy-MM-dd');
+                            editUser(para).then((res) => {
+                                this.editLoading = false;
+                                //NProgress.done();
+                                this.$message({
+                                    message: '提交成功',
+                                    type: 'success'
+                                });
+                                this.$refs['editForm'].resetFields();
+                                this.editFormVisible = false;
+                                this.getBrands();
+                            });
+                        });
+                    }
+                });
+            },
+            //新增
+            addSubmit: function () {
+                this.$refs.addForm.validate((valid) => {
+                    if (valid) {
+                        this.$confirm('确认提交吗？', '提示', {}).then(() => {
+                            this.addLoading = true;
+                            //NProgress.start();
+                            let para = Object.assign({}, this.addForm);//对象的复制
+                            //级联选择器的结果是一个数组
+                            para.productTypeId = para.productTypeId[para.productTypeId.length-1];
+
+                            this.$http.post("/product/brand/add",para)
+                                .then(res=>{
+                                    this.addLoading = false;
+                                    let data = res.data;
+                                    if(data.success){
+                                        this.$message({
+                                            message: '提交成功',
+                                            type: 'success'
+                                        });
+                                        this.$refs['addForm'].resetFields();//清空表单
+                                        this.addFormVisible = false;//关闭模态框
+                                        this.getBrands();//重新加载表格数据
+                                    }else{
+                                        this.$message({
+                                            message: data.message,
+                                            type: 'error'
+                                        });
+                                    }
+                                })
+                        });
+                    }
+                });
+            },
+            selsChange: function (sels) {
+                this.sels = sels;
+            },
+            //批量删除
+            batchRemove: function () {
+                var ids = this.sels.map(item => item.id).toString();
+                this.$confirm('确认删除选中记录吗？', '提示', {
+                    type: 'warning'
+                }).then(() => {
+                    this.listLoading = true;
+                    //NProgress.start();
+                    let para = { ids: ids };
+                    batchRemoveUser(para).then((res) => {
+                        this.listLoading = false;
+                        //NProgress.done();
+                        this.$message({
+                            message: '删除成功',
+                            type: 'success'
+                        });
+                        this.getBrands();
+                    });
+                }).catch(() => {
+
+                });
+            }
+        },
+        //相当于jquery的$(function(){})
+        mounted() {
+            this.getBrands();
+            this.loadProductTypes();
+        }
+    }
 
 </script>
 
